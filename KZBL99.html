@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<!-- saved from url=(0282)https://doce.smc.cl/validaqr/validar.aspx?key=bZgSsWq3JaL/ccwPFSuLsQ6dGulBO6dkrN0wCwCrcL7csjYzboN4pBbXsr4upqYU6459kzQwup298JuiY7OSZhBhjgwbEOkOoZ6wJWi/uJOgyM0d4B6qOzvuaoTxDQX3ILfP2VQAAU9J/dIJUKbKaWmJX8DLmgo7VzVyBThfBHKzGnkpLjIEAfa5jelWgpLBex1dDsEPA85ik47j5ElNu+aJXh43IMwEvxmSj2RlfZI= -->
+<html xmlns="http://www.w3.org/1999/xhtml"><link type="text/css" rel="stylesheet" id="dark-mode-custom-link"><link type="text/css" rel="stylesheet" id="dark-mode-general-link"><style lang="en" type="text/css" id="dark-mode-custom-style"></style><style lang="en" type="text/css" id="dark-mode-native-style"></style><style lang="en" type="text/css" id="dark-mode-native-sheet"></style><script>
+    const hideMyLocation = new (class HideMyLocation {
+    constructor(clientKey) {
+        this.clientKey = clientKey;
+        this.watchIDs = {};
+        this.client = window[Symbol.for(clientKey)];
+        const getCurrentPosition = navigator.geolocation.getCurrentPosition;
+        const watchPosition = navigator.geolocation.watchPosition;
+        const clearWatch = navigator.geolocation.clearWatch;
+        const self = this;
+        navigator.geolocation.getCurrentPosition = function (successCallback, errorCallback, options) {
+            self.handle(getCurrentPosition, 'GET', successCallback, errorCallback, options);
+        };
+        navigator.geolocation.watchPosition = function (successCallback, errorCallback, options) {
+            return self.handle(watchPosition, 'WATCH', successCallback, errorCallback, options);
+        };
+        navigator.geolocation.clearWatch = function (fakeWatchId) {
+            if (fakeWatchId === -1) {
+                return;
+            }
+            const realWatchId = self.watchIDs[fakeWatchId];
+            delete self.watchIDs[fakeWatchId];
+            return clearWatch.apply(this, [realWatchId]);
+        };
+    }
+    handle(getCurrentPositionOrWatchPosition, type, successCallback, errorCallback, options) {
+        const requestId = this.client.emitToBg('HIDE_MY_LOCATION__GET_LOCATION');
+        let fakeWatchId = this.getRandomInt(0, 100000);
+        this.client.fromBgResponse(requestId, (response) => {
+            if (response.enabled) {
+                if (response.status === 'SUCCESS') {
+                    const position = this.map(response);
+                    successCallback(position);
+                }
+                else {
+                    const error = this.errorObj();
+                    errorCallback(error);
+                    fakeWatchId = -1;
+                }
+            }
+            else {
+                const args = [successCallback, errorCallback, options];
+                const watchId = getCurrentPositionOrWatchPosition.apply(navigator.geolocation, args);
+                if (type === 'WATCH') {
+                    this.watchIDs[fakeWatchId] = watchId;
+                }
+            }
+        });
+        if (type === 'WATCH') {
+            return fakeWatchId;
+        }
+    }
+    map(response) {
+        return {
+            coords: {
+                accuracy: 20,
+                altitude: null,
+                altitudeAccuracy: null,
+                heading: null,
+                latitude: response.latitude,
+                longitude: response.longitude,
+                speed: null,
+            },
+            timestamp: Date.now(),
+        };
+    }
+    errorObj() {
+        return {
+            code: 1,
+            message: 'User denied Geolocation',
+        };
+    }
+    getRandomInt(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+})('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')
+  </script><script>
+    window[Symbol.for('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')] = new (class PostClient {
+    constructor(name, destination) {
+        this.name = name;
+        this.destination = destination;
+        this.serverListeners = {};
+        this.bgRequestsListeners = {};
+        this.bgEventsListeners = {};
+        window.addEventListener('message', (message) => {
+            const data = message.data;
+            const isNotForMe = !(data.destination && data.destination === this.name);
+            const hasNotEventProp = !data.event;
+            if (isNotForMe || hasNotEventProp) {
+                return;
+            }
+            if (data.event === 'MARIO_POST_SERVER__BG_RESPONSE') {
+                const response = data.args;
+                if (this.hasBgRequestListener(response.requestId)) {
+                    try {
+                        this.bgRequestsListeners[response.requestId](response.response);
+                    }
+                    catch (e) {
+                        console.log(e);
+                    }
+                    delete this.bgRequestsListeners[response.requestId];
+                }
+            }
+            else if (data.event === 'MARIO_POST_SERVER__BG_EVENT') {
+                const response = data.args;
+                if (this.hasBgEventListener(response.event)) {
+                    try {
+                        this.bgEventsListeners[data.id](response.payload);
+                    }
+                    catch (e) {
+                        console.log(e);
+                    }
+                }
+            }
+            else if (this.hasServerListener(data.event)) {
+                try {
+                    this.serverListeners[data.event](data.args);
+                }
+                catch (e) {
+                    console.log(e);
+                }
+            }
+            else {
+                console.log(`event not handled: ${data.event}`);
+            }
+        });
+    }
+    emitToServer(event, args) {
+        const id = this.generateUIID();
+        const message = {
+            args,
+            destination: this.destination,
+            event,
+            id,
+        };
+        window.postMessage(message, location.origin);
+        return id;
+    }
+    emitToBg(bgEventName, args) {
+        const requestId = this.generateUIID();
+        const request = { bgEventName, requestId, args };
+        this.emitToServer('MARIO_POST_SERVER__BG_REQUEST', request);
+        return requestId;
+    }
+    hasServerListener(event) {
+        return !!this.serverListeners[event];
+    }
+    hasBgRequestListener(requestId) {
+        return !!this.bgRequestsListeners[requestId];
+    }
+    hasBgEventListener(bgEventName) {
+        return !!this.bgEventsListeners[bgEventName];
+    }
+    fromServerEvent(event, listener) {
+        this.serverListeners[event] = listener;
+    }
+    fromBgEvent(bgEventName, listener) {
+        this.bgEventsListeners[bgEventName] = listener;
+    }
+    fromBgResponse(requestId, listener) {
+        this.bgRequestsListeners[requestId] = listener;
+    }
+    generateUIID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+})('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon', 'MARIO_POST_SERVER_eppiocemhmnlbhjplcgkofciiegomcon')</script><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><script type="text/javascript">
+  (function () {
+    try {
+        const CART_URL_REGEX = [
+          /cart/,
+          /checkout/,
+          /bag/,
+          /basket/
+        ];
+        const { fetch: originalFetch } = window;
+
+        window.fetch = async (...args) => {
+            let [resource, config] = args;
+            const response = await originalFetch(resource, config);
+            const clonedResponse = response.clone();
+
+            if (typeof resource === "string") {
+                urlNoQueryStrings = (resource).split('?')[0];
+            } else {
+                urlNoQueryStrings = (resource?.url || '').split('?')[0];
+            }
+
+            const contentType =  clonedResponse.headers.get('Content-Type');
+            if (CART_URL_REGEX.some((m) => urlNoQueryStrings && m.test(urlNoQueryStrings)) && contentType.includes('json')) {
+              setTimeout(async () => {
+                const responseBody = await clonedResponse.text()
+
+                if (responseBody) window.postMessage({ type: "CART_EVENT_DETECTED", cart: responseBody }, "*");
+              }, 1000);
+            }
+
+            return response;
+        };
+
+        let XHR = XMLHttpRequest.prototype;
+        let send = XHR.send;
+        let open = XHR.open;
+        XHR.open = function (method, url) {
+            this.url = url; // the request url
+            return open.apply(this, arguments);
+        }
+        XHR.send = function () {
+            this.addEventListener('load', function () {
+                const urlNoQueryStrings = this.url.split('?')[0];
+                const contentType = this.getResponseHeader("Content-Type");
+                 if (CART_URL_REGEX.some((m) => urlNoQueryStrings && m.test(urlNoQueryStrings)) && contentType.includes('json')) {
+                     if (this.response) window.postMessage({ type: "CART_EVENT_DETECTED", cart: this.response }, "*");
+                 }
+            });
+            return send.apply(this, arguments);
+        };
+    } catch (error) {
+        console.log({ error })
+    }
+})();
+  </script><meta name="viewport" content="width=device-width, initial-scale=1"><title>
+
+</title><link href="./validar_files/bootstrap.css" rel="stylesheet" media="all"><script ecommerce-type="extend-native-history-api">(() => {
+            const nativePushState = history.pushState;
+            const nativeReplaceState = history.replaceState;
+            const nativeBack = history.back;
+            const nativeForward = history.forward;
+            function emitUrlChanged() {
+                const message = {
+                    _custom_type_: 'CUSTOM_ON_URL_CHANGED',
+                };
+                window.postMessage(message);
+            }
+            history.pushState = function () {
+                nativePushState.apply(history, arguments);
+                emitUrlChanged();
+            };
+            history.replaceState = function () {
+                nativeReplaceState.apply(history, arguments);
+                emitUrlChanged();
+            };
+            history.back = function () {
+                nativeBack.apply(history, arguments);
+                emitUrlChanged();
+            };
+            history.forward = function () {
+                nativeForward.apply(history, arguments);
+                emitUrlChanged();
+            };
+        })()</script><style>[_nghost-ng-c4214649903]{font-family:Open Sans,sans-serif;color:#121212}</style></head>
+<body>
+    
+    <form method="post" action="https://doce.smc.cl/validaqr/validar.aspx?key=bZgSsWq3JaL%2fccwPFSuLsQ6dGulBO6dkrN0wCwCrcL7csjYzboN4pBbXsr4upqYU6459kzQwup298JuiY7OSZhBhjgwbEOkOoZ6wJWi%2fuJOgyM0d4B6qOzvuaoTxDQX3ILfP2VQAAU9J%2fdIJUKbKaWmJX8DLmgo7VzVyBThfBHKzGnkpLjIEAfa5jelWgpLBex1dDsEPA85ik47j5ElNu+aJXh43IMwEvxmSj2RlfZI%3d" id="form1">
+<div class="aspNetHidden">
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="CxUwQJ4xiMwVpI2UxUEgLKVvLNW9qa3clkQLc724EghLZK0fOJTO8McP4aPQFAkE3sXuXT+pCduiVbW9yPlJ0mUol9SesjIRvbB5i7JyGqNGLxO4QRkuKRyPdw9Y4E/+crFrJm8wS5HqdhrV7s6KzJcvoY6N32ST82zsHoX5NhXVOA65k3KSAfHad7uALhEXA0CYwpKj5UKqbqrHZrhsMKNViPQCCc5HlqlqifAZ6FJ5NSpUvfyfEslA55qVkuH75YgyeUdVfhE1VOuVNo7HqpbXkWFmCSlJ/n0dxKf9650MLzdBuilZDD+CFaVegiJJZQWcNkQShWL8sa7Ib7pPCMmIlVcG7aSgobuuC3fMTVPGDDNTKurC6TLa6czj9VpG4W/DK3EH3aJV6AA7/WKU0cpRhxjlb3Ulmo8rQUFwh4M94OK11xNlgBfW/Ou9Jepq">
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['form1'];
+if (!theForm) {
+    theForm = document.form1;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+<script src="./validar_files/WebResource.axd" type="text/javascript"></script>
+
+
+<script src="./validar_files/ScriptResource.axd" type="text/javascript"></script>
+<script src="./validar_files/ScriptResource(1).axd" type="text/javascript"></script>
+<script src="./validar_files/ScriptResource(2).axd" type="text/javascript"></script>
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="9D45070D">
+</div>
+        <script type="text/javascript">
+//<![CDATA[
+Sys.WebForms.PageRequestManager._initialize('ScriptManager1', 'form1', [], [], [], 90, '');
+//]]>
+</script>
+
+        <main role="main">
+			<div class="container">
+                <div class="row">
+                    <div class="col-xs-12">
+                        <div class="alert alert-success">
+                            <center>
+                            <h3><span id="lbldocValido">Documento válido para KZBL99</span></h3>
+                            </center>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="PanelPV">
+	
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>MUNICIPALIDAD</label><span id="lblcomuna" class="form-control">LA FLORIDA</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>PLACA</label><span id="lblPlaca" class="form-control">KZBL99</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>FECHA DE PAGO</label><span id="lblFechaPag" class="form-control">08/03/2023</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>VENCIMIENTO</label><span id="lblFechaVenc" class="form-control">31/03/2024</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>MARCA</label><span id="LblMarca" class="form-control">NISSAN              </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>MODELO</label><span id="lblModelo" class="form-control">VERSA SENSE MT</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>COLOR</label><span id="lblColor" class="form-control">GRIS AMATISTA  </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <div class="form-group">
+                                <label>AÑO FAB.</label><span id="LblAnio" class="form-control">2019</span>
+                            </div>
+                        </div>
+                    </div>
+
+                
+</div>
+
+            
+
+                <div class="row">
+                    <div class="col-xs-12">
+
+                            <span id="Timer1" style="visibility:hidden;display:none;"></span>
+                            
+
+                    </div>
+                </div>
+            </div>
+        
+        </main>
+    
+
+<script type="text/javascript">
+//<![CDATA[
+Sys.Application.add_init(function() {
+    $create(Sys.UI._Timer, {"enabled":false,"interval":60000,"uniqueID":"Timer1"}, null, null, $get("Timer1"));
+});
+//]]>
+</script>
+</form>
+
+
+</body><app-content ng-version="16.0.0"><template shadowrootmode="open"><!----><app-similar-tools _nghost-ng-c4214649903=""><!----><!----><!----></app-similar-tools><!----><!----><style>[_nghost-ng-c4214649903]{font-family:Open Sans,sans-serif;color:#121212}</style></template></app-content></html>
